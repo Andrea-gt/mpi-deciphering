@@ -11,7 +11,7 @@
 
 
 // Function to append time result on file
-void appendTimeResult(double cpu_time_used, long key) {
+void appendTimeResult(double cpu_time_used, uint64_t key) {
     FILE *file = fopen("time_result_parallel.csv", "a");
     if (!file) {
         perror("File opening failed");
@@ -21,11 +21,11 @@ void appendTimeResult(double cpu_time_used, long key) {
     fclose(file);
 }
 
-void decrypt(long key, char *ciph, int len) {
+void decrypt(uint64_t key, char *ciph, int len) {
     DES_key_schedule schedule;
     DES_cblock des_key;
     
-    // Convert long key to DES_cblock
+    // Convert uint64_t key to DES_cblock
     for (int i = 0; i < 8; ++i) {
         des_key[i] = (key >> (56 - (i * 8))) & 0xFF;
     }
@@ -44,11 +44,11 @@ void decrypt(long key, char *ciph, int len) {
     DES_ecb_encrypt((DES_cblock *)ciph, (DES_cblock *)ciph, &schedule, DES_DECRYPT);
 }
 
-void encrypt(long key, char *ciph, int len) {
+void encrypt(uint64_t key, char *ciph, int len) {
     DES_key_schedule schedule;
     DES_cblock des_key;
     
-    // Convert long key to DES_cblock
+    // Convert uint64_t key to DES_cblock
     for (int i = 0; i < 8; ++i) {
         des_key[i] = (key >> (56 - (i * 8))) & 0xFF;
     }
@@ -64,7 +64,7 @@ void encrypt(long key, char *ciph, int len) {
 }
 
 char search[] = "es una prueba de";
-bool tryKey(long key, char *ciph, int len) {
+bool tryKey(uint64_t key, char *ciph, int len) {
     char temp[len + 1];
     memcpy(temp, ciph, len);
     temp[len] = 0;
@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Parse the key and file name from command line arguments
-    long key = atol(argv[1]);
+    uint64_t key = atol(argv[1]);
     char *filename = argv[2];
 
     // Open the file for reading
@@ -112,8 +112,8 @@ int main(int argc, char *argv[]) {
     printf("\n");
 
     int N, id;
-    long upper = (1L << 56); // upper bound DES keys 2^56
-    long mylower, myupper;
+    uint64_t upper = (1L << 56); // upper bound DES keys 2^56
+    uint64_t mylower, myupper;
     MPI_Status st;
     MPI_Request req;
     MPI_Comm comm = MPI_COMM_WORLD;
@@ -125,18 +125,18 @@ int main(int argc, char *argv[]) {
 
     
     // Calc the range for each process
-    long range_per_node = (upper + N - 1) / N; // Ajust the range to the number of nodes
+    uint64_t range_per_node = (upper + N - 1) / N; // Ajust the range to the number of nodes
     mylower = range_per_node * id; 
     myupper = (id == N - 1) ? upper : mylower + range_per_node; // Asegurarse de que el último proceso maneje el resto
 
     
     printf("The key to be searched is between %li and %li\n, process %d", mylower, myupper, id);
 
-    long found = -1; // Initialize to -1 to indicate not found
+    uint64_t found = UINT64_MAX; // Found key
     int stop_signal = 0; // Signal to stop all processes
 
     
-    for (long i = mylower; i < myupper; ++i) {
+    for (uint64_t i = mylower; i < myupper; ++i) {
         // Verify if the stop signal is received
         MPI_Iprobe(MPI_ANY_SOURCE, 0, comm, &stop_signal, &st);
         if (stop_signal) {
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
 
         if (tryKey(i, buffer, len)) {
             found = i; // Store the found key
-            printf("Process %d: Found key %li\n", id, found);
+            printf("### Process %d: Found key %li\n", id, found);
             stop_signal = 1; // Send the stop signal to all processes
             // Send the stop signal to all processes
             for (int node = 0; node < N; node++) {
@@ -159,38 +159,31 @@ int main(int argc, char *argv[]) {
 
     }
 
-    // Send the found key to the root process
-    MPI_Send(&found, 1, MPI_LONG, 0, 0, comm);
+    // Enviar la llave encontrada al proceso root
+    MPI_Send(&found, 1, MPI_UNSIGNED_LONG_LONG, 0, id, comm); // Utiliza 'id' como tag para diferenciar los mensajes
 
     if (id == 0) {
-        // Gather results from all processes
-        long best_key = found;
+        uint64_t best_key = found;
         for (int node = 0; node < N; node++) {
-            long received_key;
-            MPI_Recv(&received_key, 1, MPI_LONG, node, 0, comm, MPI_STATUS_IGNORE);
-            if (received_key != -1) {
-                best_key = received_key; // Update the best key found
+            uint64_t received_key;
+            MPI_Recv(&received_key, 1, MPI_UNSIGNED_LONG_LONG, node, node, comm, &st); // Usamos el 'tag' correspondiente
+            if (received_key != UINT64_MAX) {
+                printf("### Received key: %lu from process %d\n", received_key, node);
+                best_key = received_key; // Actualiza la mejor llave encontrada
             }
         }
 
-
-        // Decrypt the ciphertext with the found key
-        if (best_key != -1) {
-            printf("Found key: %li\n", best_key);
+        if (best_key != UINT64_MAX) {
+            printf("Found key: %lu\n", best_key);
             decrypt(best_key, buffer, len);
             printf("Decrypted text: %s\n", buffer);
             end = clock();
-            cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+            cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
             printf("Time: %f\n", cpu_time_used);
-
-            // Append time result to file
-            appendTimeResult(cpu_time_used, key);
-
+            appendTimeResult(cpu_time_used, best_key);
         } else {
             printf("No key found\n");
         }
-
-
     }
 
     MPI_Finalize();
