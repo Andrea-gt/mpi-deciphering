@@ -149,6 +149,7 @@ int main(int argc, char *argv[]) {
             printf("Process %d: Found key %li\n", id, found);
             stop_signal = 1; // Send the stop signal to all processes
             // Send the stop signal to all processes
+            #pragma omp parallel for
             for (int node = 0; node < N; node++) {
                 MPI_Send(&stop_signal, 1, MPI_INT, node, 0, comm);
             }

@@ -9,7 +9,6 @@
 #include <openssl/des.h>
 #include <omp.h>
 
-
 // Function to append time result on file
 void appendTimeResult(double cpu_time_used, long key) {
     FILE *file = fopen("time_result_parallel.csv", "a");
@@ -64,13 +63,20 @@ void encrypt(long key, char *ciph, int len) {
 }
 
 char search[] = "es una prueba de";
-bool tryKey(long key, char *ciph, int len) {
+void tryKey(long key, char *ciph, int len, long* found, int* stop_signal, int N, MPI_Comm comm) {
     char temp[len + 1];
     memcpy(temp, ciph, len);
     temp[len] = 0;
     decrypt(key, temp, len);
-
-    return strstr((char *)temp, search) != NULL;
+    if (strstr(temp, search)) {
+        *found = key; // Store the found key
+        *stop_signal = 1; // Send the stop signal to all processes
+        // Send the stop signal to all processes
+        for (int node = 0; node < N; node++) {
+            MPI_Send(stop_signal, 1, MPI_INT, node, 0, comm);
+        }
+        printf("Found key %li\n", *found);
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -123,40 +129,29 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(comm, &id);
     printf("Process %d of %d\n", id, N);
 
-    
     // Calc the range for each process
-    long range_per_node = (upper + N - 1) / N; // Ajust the range to the number of nodes
+    long range_per_node = (upper + N - 1) / N; // Adjust the range to the number of nodes
     mylower = range_per_node * id; 
-    myupper = (id == N - 1) ? upper : mylower + range_per_node; // Asegurarse de que el último proceso maneje el resto
+    myupper = (id == N - 1) ? upper : mylower + range_per_node; // Ensure the last process handles the rest
 
-    
     printf("The key to be searched is between %li and %li\n, process %d", mylower, myupper, id);
 
     long found = -1; // Initialize to -1 to indicate not found
     int stop_signal = 0; // Signal to stop all processes
 
-    
-    for (long i = mylower; i < myupper; ++i) {
-        // Verify if the stop signal is received
-        MPI_Iprobe(MPI_ANY_SOURCE, 0, comm, &stop_signal, &st);
-        if (stop_signal) {
-            printf("Process %d: Stop signal received\n", id);
-            break;
-        }
-
-        if (tryKey(i, buffer, len)) {
-            found = i; // Store the found key
-            printf("Process %d: Found key %li\n", id, found);
-            stop_signal = 1; // Send the stop signal to all processes
-            // Send the stop signal to all processes
-            for (int node = 0; node < N; node++) {
-                MPI_Send(&stop_signal, 1, MPI_INT, node, 0, comm);
+    #pragma omp parallel shared(found, stop_signal) num_threads(5)
+    {
+        // Create tasks for each key in the range
+        #pragma omp for
+        for (long i = mylower; i < myupper; i++) {
+            // Check for stop signal in each iteration
+            if (stop_signal) {
+                printf("Process %d: Stop signal received\n", id);
+                break;
             }
 
-            printf("Process %d: Stop signal sent\n", id);
-            break; // Stop searching if the key is found
+            tryKey(i, buffer, len, &found, &stop_signal, N, comm);
         }
-
     }
 
     // Send the found key to the root process
@@ -173,7 +168,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-
         // Decrypt the ciphertext with the found key
         if (best_key != -1) {
             printf("Found key: %li\n", best_key);
@@ -185,12 +179,9 @@ int main(int argc, char *argv[]) {
 
             // Append time result to file
             appendTimeResult(cpu_time_used, key);
-
         } else {
             printf("No key found\n");
         }
-
-
     }
 
     MPI_Finalize();
