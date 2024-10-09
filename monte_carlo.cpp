@@ -1,26 +1,34 @@
 /**
- * @file bruteforce_parallel_mpi.cpp
+ * @file monte_carlo.cpp
  * 
- * @brief       This program demonstrates a brute-force attack to find the key
- *              used for DES encryption using MPI for parallelization. It encrypts 
- *              and then tries to decrypt a given ciphertext by dividing the key 
- *              space among multiple processes.
- *              
- *              The program prints the progress of the brute-force search and
- *              logs the time taken to perform the operation in a CSV file.
- *
- * @author      Valdez D., Flores A., Ramirez A.
- * @date        October 8, 2024
- *
- * @usage:
+ * @brief This program implements a brute-force attack on DES encryption using 
+ *        multiple parallel techniques including OpenMP and MPI. It searches 
+ *        for a specified key in a given range and decrypts the ciphertext 
+ *        if the key is found. The program also measures and logs the time 
+ *        taken for the key search process.
+ * 
+ * @authors Valdez D., Flores A., Ramirez A.
+ * @date October 8, 2024
+ * 
+ * @usage 
  * Compile the program with:
- *      mpic++ -o bruteforce_parallel_mpi bruteforce_parallel_mpi.cpp -lssl -lcrypto
- * Run the program with the command:     
- *      mpirun -np <number_of_processes> ./bruteforce_parallel_mpi <key> <file>
- *
+ *    mpic++ -o monte_carlo monte_carlo.cpp -lssl -lcrypto -fopenmp -lmpi
+ * 
+ * Run the program with the command:
+ *     mpirun -np <number_of_processes> ./monte_carlo <key> <file>
+ * 
  * where <key> is the initial encryption key and <file> is the 
  * file containing the text to encrypt and then attack.
- **/
+ * 
+ * This program supports multiple threads and processes for improved performance 
+ * during the brute-force search. It uses the DES encryption algorithm and applies 
+ * PKCS#7 padding to the plaintext before encryption and decryption. 
+ * The found key and the time taken for the search are logged to a CSV file 
+ * for further analysis.
+ * 
+ * @note Make sure to have OpenSSL and MPI installed on your system to compile 
+ *       and run the program.
+ */
 
 #include <iostream>     // For input and output streams
 #include <fstream>      // For file handling
@@ -123,6 +131,10 @@ void encrypt(uint64_t key, char *ciph, int len) {
     DES_key_schedule schedule;
     DES_cblock des_key;
 
+    // Suppress deprecated warnings for OpenSSL DES functions
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
     // Convert long key to DES_cblock (56 bits represented in 8 bytes)
     for (int i = 0; i < 8; ++i) {
         des_key[i] = (key >> (56 - (i * 8))) & 0xFF;
@@ -138,6 +150,8 @@ void encrypt(uint64_t key, char *ciph, int len) {
     for (int i = 0; i < len; i += 8) {
         DES_ecb_encrypt((DES_cblock *)(ciph + i), (DES_cblock *)(ciph + i), &schedule, DES_ENCRYPT);
     }
+
+    #pragma GCC diagnostic pop
 }
 
 /**
@@ -168,7 +182,6 @@ bool tryKey(uint64_t key, char *ciph, int len, const std::string& search_str) {
     return found;
 }
 
-
 void searchOnOrder(uint64_t start, uint64_t end, uint64_t key, char *ciph, int len, const std::string &search_str, uint64_t &found_key, bool &key_found, int world_rank, int world_size, std::string &padded_buffer) {
     for (uint64_t k = start; k < end; ++k) {
         // Verifica si la llave ya ha sido encontrada
@@ -190,7 +203,7 @@ void searchOnOrder(uint64_t start, uint64_t end, uint64_t key, char *ciph, int l
                 MPI_Recv(&received_key, 1, MPI_UNSIGNED_LONG_LONG, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
             if (received_key != 0) {
-                std::cout << "Key found: " << received_key << "L" << std::endl;
+                //std::cout << "Key found: " << received_key << "L" << std::endl;
                 found_key = received_key; // Update the best key found
                 key_found = true;
                 #pragma omp flush(key_found) // Asegurar que todos los hilos vean el cambio
@@ -201,7 +214,7 @@ void searchOnOrder(uint64_t start, uint64_t end, uint64_t key, char *ciph, int l
         if (tryKey(k, &padded_buffer[0], len, "es una prueba de")) {
             found_key = k;
             key_found = true;
-            std::cout << "Key found: " << k << "L" << std::endl;
+            //std::cout << "Key found: " << k << "L" << std::endl;
             #pragma omp flush(key_found) // Asegurar que todos los hilos vean el cambio
             // Enviar la llave encontrada a todos los procesos
             for (int node = 0; node < world_size; node++) {
@@ -233,7 +246,7 @@ void searchReversed( uint64_t start, uint64_t end, uint64_t key, char *ciph, int
                 MPI_Recv(&received_key, 1, MPI_UNSIGNED_LONG_LONG, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
             if (received_key != 0) {
-                std::cout << "Key found: " << received_key << "L" << std::endl;
+                //std::cout << "Key found: " << received_key << "L" << std::endl;
                 found_key = received_key; // Update the best key found
                 key_found = true;
                 return;
@@ -243,7 +256,7 @@ void searchReversed( uint64_t start, uint64_t end, uint64_t key, char *ciph, int
         if (tryKey(k, &padded_buffer[0], len, "es una prueba de")) {
             found_key = k;
             key_found = true;
-            std::cout << "Key found: " << k << "L" << std::endl;
+            //std::cout << "Key found: " << k << "L" << std::endl;
             // Send the found key to all processes
             for (int node = 0; node < world_size; node++) {
                 if (node != world_rank) {
@@ -276,7 +289,7 @@ void searchByMonteCarlo( uint64_t start, uint64_t end, uint64_t key, char *ciph,
                 MPI_Recv(&received_key, 1, MPI_UNSIGNED_LONG_LONG, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             }
             if (received_key != 0) {
-                std::cout << "Key found: " << received_key << "L" << std::endl;
+                //std::cout << "Key found: " << received_key << "L" << std::endl;
                 found_key = received_key; // Update the best key found
                 key_found = true;
                 return;
@@ -288,7 +301,7 @@ void searchByMonteCarlo( uint64_t start, uint64_t end, uint64_t key, char *ciph,
         if (tryKey(random_key, &padded_buffer[0], len, "es una prueba de")) {
             found_key = random_key;
             key_found = true;
-            std::cout << "Key found: " << random_key << "L" << std::endl;
+            //std::cout << "Key found: " << random_key << "L" << std::endl;
             // Send the found key to all processes
             for (int node = 0; node < world_size; node++) {
                 if (node != world_rank) {
@@ -303,8 +316,6 @@ void searchByMonteCarlo( uint64_t start, uint64_t end, uint64_t key, char *ciph,
         }
     }
 }
-
-
 
 /**
  * @brief Main function to perform the DES brute-force attack using MPI.
@@ -414,32 +425,30 @@ int main(int argc, char *argv[]) {
         {
             #pragma omp task
             {
-                std::cout << "Searching on order" << std::endl;
+                //std::cout << "Searching on order" << std::endl;
                 searchOnOrder(key_start, key_end, key, &padded_buffer[0], len, "es una prueba de", found_key, key_found, world_rank, world_size, padded_buffer);
             }
 
             #pragma omp task
             {
-                std::cout << "Searching reversed" << std::endl;
+                //std::cout << "Searching reversed" << std::endl;
                 searchReversed(key_start, key_end, key, &padded_buffer[0], len, "es una prueba de", found_key, key_found, world_rank, world_size, padded_buffer);
             }
 
             #pragma omp task
             {
-                std::cout << "Searching by Monte Carlo" << std::endl;
+                //std::cout << "Searching by Monte Carlo" << std::endl;
                 searchByMonteCarlo(key_start, key_end, key, &padded_buffer[0], len, "es una prueba de", found_key, key_found, world_rank, world_size, padded_buffer);
             }
 
             #pragma omp task
             {
-                std::cout << "Searching by Monte Carlo" << std::endl;
+                //std::cout << "Searching by Monte Carlo" << std::endl;
                 searchByMonteCarlo(key_start, key_end, key, &padded_buffer[0], len, "es una prueba de", found_key, key_found, world_rank, world_size, padded_buffer);
             }
 
         }
     }
-
-    
 
     // Gather the found key from all processes
     uint64_t global_found_key = 0;
@@ -448,8 +457,9 @@ int main(int argc, char *argv[]) {
     // Only the root process will output the result
     if (world_rank == 0) {
         if (global_found_key != 0) {
-            std::cout << "\nKey found: " << global_found_key << "L" << std::endl;
-
+            if (world_rank == 0) {
+                std::cout << "\nKey found: " << global_found_key << "L" << std::endl;
+            }
             // Decrypt and display the message
             decrypt(global_found_key, &padded_buffer[0], len);
             std::string decrypted_message = removePadding(std::string(&padded_buffer[0], len));
