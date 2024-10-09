@@ -1,34 +1,26 @@
 /**
- * @file monte_carlo.cpp
+ * @file genetic_selection.cpp
  * 
- * @brief This program implements a brute-force attack on DES encryption using 
- *        multiple parallel techniques including OpenMP and MPI. It searches 
- *        for a specified key in a given range and decrypts the ciphertext 
- *        if the key is found. The program also measures and logs the time 
- *        taken for the key search process.
- * 
- * @authors Valdez D., Flores A., Ramirez A.
- * @date October 8, 2024
- * 
- * @usage 
- * Compile the program with:
- *    mpic++ -o monte_carlo monte_carlo.cpp -lssl -lcrypto -fopenmp -lmpi
- * 
- * Run the program with the command:
- *     mpirun -np <number_of_processes> ./monte_carlo <key> <file>
- * 
+ * @brief       This program demonstrates a brute-force attack to find the key
+ *              used for DES encryption using a genetic algorithm. It encrypts
+ *              and then tries to decrypt a given ciphertext by attempting 
+ *              every possible key combination up to the maximum 56-bit DES keyspace.
+ *              
+ *              The program prints the progress of the brute-force search and
+ *              logs the time taken to perform the operation in a CSV file.
+ *
+ * @author      Valdez D., Flores A., Ramirez A. 
+ * @date        October 8, 2024
+ *
+*  @usage:
+ * Compile the program with mpic++ -o genetic_selection genetic_selection.cpp -lssl -lcrypto
+ * Run the program with the command:     
+ *      mpirun -np 4 ./genetic_selection <key> <file>
+ *
  * where <key> is the initial encryption key and <file> is the 
  * file containing the text to encrypt and then attack.
- * 
- * This program supports multiple threads and processes for improved performance 
- * during the brute-force search. It uses the DES encryption algorithm and applies 
- * PKCS#7 padding to the plaintext before encryption and decryption. 
- * The found key and the time taken for the search are logged to a CSV file 
- * for further analysis.
- * 
- * @note Make sure to have OpenSSL and MPI installed on your system to compile 
- *       and run the program.
- */
+ *
+ **/
 
 #include <iostream>     // For input and output streams
 #include <fstream>      // For file handling
@@ -182,6 +174,21 @@ bool tryKey(uint64_t key, char *ciph, int len, const std::string& search_str) {
     return found;
 }
 
+/**
+ * @brief Searches for a key in a specified range in ascending order.
+ *
+ * @param start The starting value of the key search range.
+ * @param end The ending value of the key search range.
+ * @param key The current key to test (not used in this function).
+ * @param ciph Pointer to the ciphertext.
+ * @param len Length of the ciphertext.
+ * @param search_str The string to compare against the decrypted text.
+ * @param found_key Reference to store the found key.
+ * @param key_found Reference to indicate if the key has been found.
+ * @param world_rank The rank of the current process in the MPI world.
+ * @param world_size The total number of processes in the MPI world.
+ * @param padded_buffer Reference to a string used for decryption.
+ */
 void searchOnOrder(uint64_t start, uint64_t end, uint64_t key, char *ciph, int len, const std::string &search_str, uint64_t &found_key, bool &key_found, int world_rank, int world_size, std::string &padded_buffer) {
     for (uint64_t k = start; k < end; ++k) {
         // Verifica si la llave ya ha sido encontrada
@@ -230,7 +237,21 @@ void searchOnOrder(uint64_t start, uint64_t end, uint64_t key, char *ciph, int l
     }
 }
 
-
+/**
+ * @brief Searches for a key in a specified range in descending order.
+ *
+ * @param start The starting value of the key search range.
+ * @param end The ending value of the key search range.
+ * @param key The current key to test (not used in this function).
+ * @param ciph Pointer to the ciphertext.
+ * @param len Length of the ciphertext.
+ * @param search_str The string to compare against the decrypted text.
+ * @param found_key Reference to store the found key.
+ * @param key_found Reference to indicate if the key has been found.
+ * @param world_rank The rank of the current process in the MPI world.
+ * @param world_size The total number of processes in the MPI world.
+ * @param padded_buffer Reference to a string used for decryption.
+ */
 void searchReversed( uint64_t start, uint64_t end, uint64_t key, char *ciph, int len, const std::string& search_str, uint64_t &found_key, bool &key_found, int world_rank, int world_size, std::string &padded_buffer) {
     for (uint64_t k = end - 1; k >= start && !key_found; --k) {
         // Verify if not recieving the key from another process
@@ -273,6 +294,13 @@ void searchReversed( uint64_t start, uint64_t end, uint64_t key, char *ciph, int
     }
 }
 
+/**
+ * @brief Computes the Levenshtein distance between two strings.
+ *
+ * @param s1 First string.
+ * @param s2 Second string.
+ * @return The Levenshtein distance between s1 and s2.
+ */
 int levenshteinDistance(const std::string &s1, const std::string &s2) {
     const std::size_t len1 = s1.size(), len2 = s2.size();
     std::vector<std::vector<unsigned int>> d(len1 + 1, std::vector<unsigned int>(len2 + 1));
@@ -292,6 +320,16 @@ int levenshteinDistance(const std::string &s1, const std::string &s2) {
     return d[len1][len2];
 }
 
+/**
+ * @brief Evaluates the fitness of a given key by decrypting the ciphertext
+ *        and calculating the Levenshtein distance between the decrypted text
+ *
+ * @param key The key used for decryption.
+ * @param ciph Pointer to the ciphertext.
+ * @param len Length of the ciphertext.
+ * @param search_str The string to compare against the decrypted text.
+ * @return A fitness score calculated as 1 / (1 + distance).
+ */
 double evaluateFitness(uint64_t key, char *ciph, int len, const std::string& search_str) {
     // Decrypt the ciphertext using the key
     char ciphText[len];
@@ -303,6 +341,12 @@ double evaluateFitness(uint64_t key, char *ciph, int len, const std::string& sea
     return 1.0 / (1 + distance);
 }
 
+/**
+ * @brief Selects an individual from the population based on their fitness.
+ *
+ * @param fitness Vector of fitness scores for each individual.
+ * @return The index of the selected individual.
+ */
 int selectIndividual(const std::vector<double>& fitness) {
     double total_fitness = 0.0;
     for (double f : fitness) {
@@ -324,9 +368,16 @@ int selectIndividual(const std::vector<double>& fitness) {
     return fitness.size() - 1; // Fallback in case rounding causes a miss
 }
 
+/**
+ * @brief Performs crossover between two parent keys to produce an offspring key.
+ *
+ * @param parent1 First parent key.
+ * @param parent2 Second parent key.
+ * @return The offspring key produced by crossover.
+ */
 uint64_t crossover(uint64_t parent1, uint64_t parent2) {
     // Choose a random crossover point (bit position)
-    int crossover_point = rand() % 56; // Assuming 56-bit DES key
+    int crossover_point = rand() % 56;
 
     // Mask to extract part of the key
     uint64_t mask = (1ULL << crossover_point) - 1;
@@ -337,6 +388,15 @@ uint64_t crossover(uint64_t parent1, uint64_t parent2) {
     return offspring;
 }
 
+/**
+ * @brief Mutates an individual key by flipping a random bit.
+ *        Ensures that the mutated key stays within the specified range.
+ *
+ * @param individual The key to mutate.
+ * @param start The lower bound of the valid key range.
+ * @param end The upper bound of the valid key range.
+ * @return The mutated key.
+ */
 uint64_t mutate(uint64_t individual, uint64_t start, uint64_t end) {
     // Choose a random bit to flip
     int bit_to_flip = rand() % 56; // 56-bit key
@@ -354,6 +414,23 @@ uint64_t mutate(uint64_t individual, uint64_t start, uint64_t end) {
     return individual;
 }
 
+/**
+ * @brief Searches for the key using a genetic algorithm.
+ *        It evolves a population of keys and tries to find one that successfully decrypts the ciphertext
+ *        to match the target search string.
+ *
+ * @param start The starting range for the key search.
+ * @param end The ending range for the key search.
+ * @param key The current key to test.
+ * @param ciph Pointer to the ciphertext.
+ * @param len Length of the ciphertext.
+ * @param search_str The string to compare against the decrypted text.
+ * @param found_key Reference to store the found key.
+ * @param key_found Reference to indicate if the key has been found.
+ * @param world_rank The rank of the current process in the MPI world.
+ * @param world_size The total number of processes in the MPI world.
+ * @param padded_buffer Reference to a string used for decryption.
+ */
 void searchByGeneticAlgorithm( uint64_t start, uint64_t end, uint64_t key, char *ciph, int len, const std::string& search_str, uint64_t &found_key, bool &key_found, int world_rank, int world_size, std::string &padded_buffer) {
     const int population_size = 100;  // Adjust population size as needed
     const uint64_t num_generations = uint64_t(end - start) / uint64_t(population_size); // Adjust number of generations as needed

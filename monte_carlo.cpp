@@ -182,6 +182,21 @@ bool tryKey(uint64_t key, char *ciph, int len, const std::string& search_str) {
     return found;
 }
 
+/**
+ * @brief Searches for a key in a specified range in ascending order.
+ *
+ * @param start The starting value of the key search range.
+ * @param end The ending value of the key search range.
+ * @param key The current key to test (not used in this function).
+ * @param ciph Pointer to the ciphertext.
+ * @param len Length of the ciphertext.
+ * @param search_str The string to compare against the decrypted text.
+ * @param found_key Reference to store the found key.
+ * @param key_found Reference to indicate if the key has been found.
+ * @param world_rank The rank of the current process in the MPI world.
+ * @param world_size The total number of processes in the MPI world.
+ * @param padded_buffer Reference to a string used for decryption.
+ */
 void searchOnOrder(uint64_t start, uint64_t end, uint64_t key, char *ciph, int len, const std::string &search_str, uint64_t &found_key, bool &key_found, int world_rank, int world_size, std::string &padded_buffer) {
     for (uint64_t k = start; k < end; ++k) {
         // Verifica si la llave ya ha sido encontrada
@@ -230,7 +245,21 @@ void searchOnOrder(uint64_t start, uint64_t end, uint64_t key, char *ciph, int l
     }
 }
 
-
+/**
+ * @brief Searches for a key in a specified range in descending order.
+ *
+ * @param start The starting value of the key search range.
+ * @param end The ending value of the key search range.
+ * @param key The current key to test (not used in this function).
+ * @param ciph Pointer to the ciphertext.
+ * @param len Length of the ciphertext.
+ * @param search_str The string to compare against the decrypted text.
+ * @param found_key Reference to store the found key.
+ * @param key_found Reference to indicate if the key has been found.
+ * @param world_rank The rank of the current process in the MPI world.
+ * @param world_size The total number of processes in the MPI world.
+ * @param padded_buffer Reference to a string used for decryption.
+ */
 void searchReversed( uint64_t start, uint64_t end, uint64_t key, char *ciph, int len, const std::string& search_str, uint64_t &found_key, bool &key_found, int world_rank, int world_size, std::string &padded_buffer) {
     for (uint64_t k = end - 1; k >= start && !key_found; --k) {
         // Verify if not recieving the key from another process
@@ -273,6 +302,21 @@ void searchReversed( uint64_t start, uint64_t end, uint64_t key, char *ciph, int
     }
 }
 
+/**
+ * @brief Searches for the key using the Monte Carlo algorithm.
+ *
+ * @param start The starting range for the key search.
+ * @param end The ending range for the key search.
+ * @param key The current key to test.
+ * @param ciph Pointer to the ciphertext.
+ * @param len Length of the ciphertext.
+ * @param search_str The string to compare against the decrypted text.
+ * @param found_key Reference to store the found key.
+ * @param key_found Reference to indicate if the key has been found.
+ * @param world_rank The rank of the current process in the MPI world.
+ * @param world_size The total number of processes in the MPI world.
+ * @param padded_buffer Reference to a string used for decryption.
+ */
 void searchByMonteCarlo( uint64_t start, uint64_t end, uint64_t key, char *ciph, int len, const std::string& search_str, uint64_t &found_key, bool &key_found, int world_rank, int world_size, std::string &padded_buffer) {
     for (uint64_t k = start; k < end && !key_found; ++k) {
         // Verify if not recieving the key from another process
