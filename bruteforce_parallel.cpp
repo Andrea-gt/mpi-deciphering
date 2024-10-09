@@ -1,5 +1,5 @@
 /**
- * @file bruteforce_parallel_mpi.cpp
+ * @file bruteforce_parallel.cpp
  * 
  * @brief       This program demonstrates a brute-force attack to find the key
  *              used for DES encryption using MPI for parallelization. It encrypts 
@@ -14,9 +14,10 @@
  *
  * @usage:
  * Compile the program with:
- *      mpic++ -o bruteforce_parallel_mpi bruteforce_parallel_mpi.cpp -lssl -lcrypto
+ *      mpic++ -o bruteforce_parallel bruteforce_parallel.cpp -lssl -lcrypto
+ * 
  * Run the program with the command:     
- *      mpirun -np <number_of_processes> ./bruteforce_parallel_mpi <key> <file>
+ *      mpirun -np <number_of_processes> ./bruteforce_parallel <key> <file>
  *
  * where <key> is the initial encryption key and <file> is the 
  * file containing the text to encrypt and then attack.
@@ -122,6 +123,10 @@ void encrypt(uint64_t key, char *ciph, int len) {
     DES_key_schedule schedule;
     DES_cblock des_key;
 
+    // Suppress deprecated warnings for OpenSSL DES functions
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
     // Convert long key to DES_cblock (56 bits represented in 8 bytes)
     for (int i = 0; i < 8; ++i) {
         des_key[i] = (key >> (56 - (i * 8))) & 0xFF;
@@ -137,6 +142,8 @@ void encrypt(uint64_t key, char *ciph, int len) {
     for (int i = 0; i < len; i += 8) {
         DES_ecb_encrypt((DES_cblock *)(ciph + i), (DES_cblock *)(ciph + i), &schedule, DES_ENCRYPT);
     }
+
+    #pragma GCC diagnostic pop
 }
 
 /**
@@ -163,7 +170,6 @@ bool tryKey(uint64_t key, char *ciph, int len, const std::string& search_str) {
 
     // Check if the search string is found
     bool found = strstr(temp.get(), search_str.c_str()) != nullptr;
-
     return found;
 }
 
@@ -266,7 +272,6 @@ int main(int argc, char *argv[]) {
     uint64_t found_key = 0;
 
     // Brute-force key search
-
     for (uint64_t k = key_start; k < key_end && !key_found; ++k) {
         // Verify if not recieving the key from another process
         int flag;
@@ -275,18 +280,17 @@ int main(int argc, char *argv[]) {
             uint64_t received_key;
             MPI_Recv(&received_key, 1, MPI_UNSIGNED_LONG_LONG, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             if (received_key != 0) {
-                std::cout << "Key found: " << received_key << "L" << std::endl;
+                //std::cout << "Key found: " << received_key << "L" << std::endl;
                 found_key = received_key; // Update the best key found
                 key_found = true;
                 break;
             }
         }
 
-
         if (tryKey(k, &padded_buffer[0], len, "es una prueba de")) {
             found_key = k;
             key_found = true;
-            std::cout << "Key found: " << k << "L" << std::endl;
+            //std::cout << "Key found: " << k << "L" << std::endl;
             // Send the found key to all processes
             for (int node = 0; node < world_size; node++) {
                 if (node != world_rank) {
@@ -299,7 +303,6 @@ int main(int argc, char *argv[]) {
         }
     }
     
-
     // Gather the found key from all processes
     uint64_t global_found_key = 0;
     MPI_Allreduce(&found_key, &global_found_key, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, MPI_COMM_WORLD);
@@ -307,8 +310,9 @@ int main(int argc, char *argv[]) {
     // Only the root process will output the result
     if (world_rank == 0) {
         if (global_found_key != 0) {
-            std::cout << "\nKey found: " << global_found_key << "L" << std::endl;
-
+            if (world_rank == 0) {
+                std::cout << "\nKey found: " << global_found_key << "L" << std::endl;
+            }
             // Decrypt and display the message
             decrypt(global_found_key, &padded_buffer[0], len);
             std::string decrypted_message = removePadding(std::string(&padded_buffer[0], len));
