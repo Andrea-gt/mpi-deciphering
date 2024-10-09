@@ -480,13 +480,6 @@ void searchByGeneticAlgorithm( uint64_t start, uint64_t end, uint64_t key, char 
                 }
                 return;
             }
-            if(i % 50 == 0) {
-                char ciphText[len];
-                std::memcpy(ciphText, ciph, len);
-                decrypt(key, ciphText, len);
-                std::string decrypted = std::string(ciphText, len);
-                std::cout << "\nGA KEY " << population[i] << " " << fitness[i] << " " << world_rank << " " << ciphText << std::endl;
-            }
             fitness[i] = evaluateFitness(population[i], ciph, len, search_str); // Define this function to score how good the key is
         }
 
