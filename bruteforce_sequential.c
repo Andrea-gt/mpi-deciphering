@@ -179,13 +179,18 @@ int main(int argc, char *argv[]) {
     int len = strlen(buffer);
 
     // Encrypt the plaintext
-    printf("Original text: %s\n", buffer);
+    printf("\nOriginal text: %s\n", buffer);
     encrypt(key, buffer, len);
 
-    printf("Encrypted text: ");
+    printf("\nEncrypted text: ");
     for (int i = 0; i < len; ++i) {
         printf("%02x", (unsigned char)buffer[i]);
     }
+
+    // Neatly print the filename, key, and search string
+    printf("\nFilename: %s\n", filename);
+    printf("Key: %ldL\n", key);
+    printf("Search string: '%s'\n", search);
     printf("\n");
 
     long upper = (1L << 56); // upper bound for DES keys (2^56)
@@ -196,12 +201,12 @@ int main(int argc, char *argv[]) {
     for (long i = 0; i < upper; ++i) {
         if (tryKey(i, buffer, len)) {
             found = i;
-            printf("Found key: %li\n", found);
+            printf("\nFound key: %li\n", found);
             break; // Stop searching if the key is found
         }
 
         // Debug message every large number of iterations
-        if (i % 100000000000 == 0) {
+        if (i % 10000000000 == 0) {
             printf("Progress: %li\n", i);
         }
     }
@@ -217,7 +222,7 @@ int main(int argc, char *argv[]) {
     // Calculate the time taken for the brute-force search
     end = clock();
     cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf("Time: %f seconds\n", cpu_time_used);
+    printf("\nTime: %f seconds\n", cpu_time_used);
 
     // Append time result to file
     appendTimeResult(cpu_time_used, key);
