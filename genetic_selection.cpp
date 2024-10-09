@@ -218,7 +218,7 @@ void searchOnOrder(uint64_t start, uint64_t end, uint64_t key, char *ciph, int l
             }
         }
 
-        if (tryKey(k, &padded_buffer[0], len, "es una prueba de")) {
+        if (tryKey(k, &padded_buffer[0], len, search_str)) {
             found_key = k;
             key_found = true;
             //std::cout << "Key found: " << k << "L" << std::endl;
@@ -274,7 +274,7 @@ void searchReversed( uint64_t start, uint64_t end, uint64_t key, char *ciph, int
             }
         }
 
-        if (tryKey(k, &padded_buffer[0], len, "es una prueba de")) {
+        if (tryKey(k, &padded_buffer[0], len, search_str)) {
             found_key = k;
             key_found = true;
             //std::cout << "Key found: " << k << "L" << std::endl;
@@ -524,6 +524,8 @@ int main(int argc, char *argv[]) {
 
     auto start = std::chrono::high_resolution_clock::now(); // Start time measurement
 
+    std::string search_str = "es una prueba de"; // The string to search for in the decrypted text
+
     // Check for correct usage
     if (argc < 3) {
         if (world_rank == 0) {
@@ -587,7 +589,7 @@ int main(int argc, char *argv[]) {
             std::cout << std::hex << std::setw(2) << std::setfill('0') << (static_cast<unsigned int>(padded_buffer[i]) & 0xFF) << std::dec;
         }
         std::cout << "\nKey: " << key << "L" << std::endl;
-        std::cout << "Search string: 'es una prueba de'" << std::endl;
+        std::cout << "Search string: '" << search_str << "'" << std::endl;
     }
 
     // Initialize variables for the brute-force attack
@@ -612,25 +614,25 @@ int main(int argc, char *argv[]) {
             #pragma omp task
             {
                 //std::cout << "Searching on order" << std::endl;
-                searchOnOrder(key_start, key_end, key, &padded_buffer[0], len, "es una prueba de", found_key, key_found, world_rank, world_size, padded_buffer);
+                searchOnOrder(key_start, key_end, key, &padded_buffer[0], len, search_str, found_key, key_found, world_rank, world_size, padded_buffer);
             }
 
             #pragma omp task
             {
                 //std::cout << "Searching reversed" << std::endl;
-                searchReversed(key_start, key_end, key, &padded_buffer[0], len, "es una prueba de", found_key, key_found, world_rank, world_size, padded_buffer);
+                searchReversed(key_start, key_end, key, &padded_buffer[0], len, search_str, found_key, key_found, world_rank, world_size, padded_buffer);
             }
 
             #pragma omp task
             {
                 //std::cout << "Searching by Monte Carlo" << std::endl;
-                searchByGeneticAlgorithm(key_start, key_end, key, &padded_buffer[0], len, "es una prueba de", found_key, key_found, world_rank, world_size, padded_buffer);
+                searchByGeneticAlgorithm(key_start, key_end, key, &padded_buffer[0], len, search_str, found_key, key_found, world_rank, world_size, padded_buffer);
             }
 
             #pragma omp task
             {
                 //std::cout << "Searching by Monte Carlo" << std::endl;
-                searchByGeneticAlgorithm(key_start, key_end, key, &padded_buffer[0], len, "es una prueba de", found_key, key_found, world_rank, world_size, padded_buffer);
+                searchByGeneticAlgorithm(key_start, key_end, key, &padded_buffer[0], len, search_str, found_key, key_found, world_rank, world_size, padded_buffer);
             }
 
         }
